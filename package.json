@@ -1,0 +1,22 @@
+{
+  "name": "notesnook-inbox-email-worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "nn-inbox-cloudflare-workers": "file://./nn-inbox-cloudflare-workers",
+    "typescript": "^5.5.2",
+    "wrangler": "^4.107.0"
+  },
+  "dependencies": {
+    "postal-mime": "^2.7.5",
+    "zod": "^4.4.3"
+  }
+}

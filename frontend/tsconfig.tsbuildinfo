@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/ApiKeyGate.tsx","./src/components/Dashboard.tsx","./src/components/MetaInfoPanel.tsx","./src/components/OptionsPanel.tsx","./src/components/TextPage.tsx"],"version":"5.9.3"}

@@ -1,0 +1,78 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "notesnook-inbox",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-04",
+	"observability": {
+		"enabled": true
+	},
+	"assets": {
+		"directory": "frontend/dist/",
+		"run_worker_first": ["/api/*", "/apimeta/*", "/admin-api/*"],
+		"not_found_handling": "single-page-application"
+	},
+	"upload_source_maps": true,
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"vars": {
+		"Notesnook-Server-Url": "https://api.notesnook.com/",
+		// Use `wrangler secret put Admin_Secret_Key`
+		// Need to generate a secret? Create one with `openssl rand -hex 32`.
+	},
+	"secrets": {
+		"required": [
+			"Admin_Secret_Key"
+		]
+	},
+	"keep_vars": true,
+	"d1_databases": [
+		{
+			"binding": "notesnook_inbox",
+			"database_name": "notesnook_inbox",
+			"database_id": "fee103f1-73ef-4408-9688-16ee87c8801f",
+			"remote": false
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "notesnook_inbox_kv",
+			"id": "2212ac6d14cb4fd3a77cfb2b432a8478"
+		}
+	],
+	"triggers": {
+		"crons": ["0 23 * * *","5 23 * * *"]
+	}
+	/**
+	 * Smart Placement
+	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 */
+	// "placement": {  "mode": "smart" }
+	/**
+	 * Bindings
+	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+	 * databases, object storage, AI inference, real-time communication and more.
+	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+	 */
+	/**
+	 * Environment Variables
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 */
+	// "vars": {  "MY_VARIABLE": "production_value" }
+	/**
+	 * Static Assets
+	 * https://developers.cloudflare.com/workers/static-assets/binding/
+	 */
+	// "assets": {  "directory": "./public/",  "binding": "ASSETS" }
+	/**
+	 * Service Bindings (communicate between multiple Workers)
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+	 */
+	// "services": [  {   "binding": "MY_SERVICE",   "service": "my-service"  } ]
+}

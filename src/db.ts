@@ -45,7 +45,7 @@ export async function getUser(
     db: D1DatabaseSession
 ): Promise<returnedUserDocument> {
     const result = await db
-        .prepare("SELECT * FROM users WHERE LOWER(email) = ?")
+        .prepare("SELECT * FROM users WHERE email = ?")
         .bind(email)
         .first<databaseReturnedInfo>();
 
@@ -102,17 +102,44 @@ export async function updateUserLastUsed(emailOrApikey: string, db: D1DatabaseSe
 }
 }
 
-export async function adminDBOperation(operation: string, db: D1DatabaseSession) {
+export async function adminDBOperation(operation: string, db: D1DatabaseSession): Promise<void> {
 	if (operation === 'init') {
 		const initdb = [];
 		const sql = [
 			'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL UNIQUE, apikey TEXT NOT NULL UNIQUE, options TEXT, last_used INTEGER NOT NULL)',
 			'CREATE TABLE meta (key TEXT PRIMARY KEY, data BLOB NOT NULL)',
-            'INSERT INTO meta (key, data) VALUES ("Version", 1)'
+            'INSERT INTO meta (key, data) VALUES ("Version", 2)'
 		];
 		for (const op of sql) {
 			initdb.push(db.prepare(op));
 		}
 		await db.batch(initdb);
 	}
+    if (operation === "upgrade") {
+        await migrateDatabaseVersion(db);
+    }
+}
+
+async function migrateDatabaseVersion(db: D1DatabaseSession) {
+    const dbVersion = await db.prepare('SELECT data FROM meta WHERE key = "Version"').first<{data: number}>();
+    if (!dbVersion) {
+        console.error("Unknown database version! Cannot continue.");
+        throw new Error("Unknown database version!");
+    }
+    switch (dbVersion?.data){
+        case 1 : {
+            const result = await db.batch([db.prepare("UPDATE users SET email = LOWER(email);"), 
+                db.prepare('UPDATE meta SET data = 2 WHERE key = "Version";')]);
+            console.log(JSON.stringify(result));
+            console.log("Updated from version 1 -> 2 successfully.");
+        }
+        case 2 : {
+            // nothing to do
+            break;
+        }
+        default: {
+            console.error(`We shouldn't be here! Unknown database version: ${JSON.stringify(dbVersion)}`)
+            throw new Error(`Unknown database version! ${JSON.stringify(dbVersion)}`)
+        }
+    }
 }

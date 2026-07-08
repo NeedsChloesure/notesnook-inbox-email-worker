@@ -1,7 +1,7 @@
 import * as PostalMime from "postal-mime";
 import {getInboxPublicEncryptionKey, encrypt, postEncryptedInboxItem} from "../nn-inbox-cloudflare-workers/src/index.js"
 import { getUser, getOrCreateUser, adminDBOperation, updateUserLastUsed, updateUserOptions } from "./db.js";
-import { z } from "zod";
+import { success, z } from "zod";
 import {DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT} from "./config.js";
 
 export const USER_OPTIONS = z.object({
@@ -106,8 +106,22 @@ async function routeAdmin(request: Request, env: Env){
 	const db = env.notesnook_inbox.withSession()
 	switch (url.pathname){
 		case ("/admin-api/init"): {
-			await adminDBOperation("init", db)
-			return Response.json({success: true})
+			try {
+			await adminDBOperation("init", db);
+			return Response.json({success: true});
+			} catch (err) {
+				console.error(err)
+				return Response.json({success: false, details: String(err)}, {status: 500})
+			}
+		}
+		case ("/admin-api/upgrade"): {
+			try {
+			await adminDBOperation("upgrade", db);
+			return Response.json({success: true});
+			} catch (err) {
+				console.error(err)
+				return Response.json({success: false, details: String(err)}, {status: 500})
+			}
 		}
 		default: {
 			return Response.json({success: false}, {status: 404})
@@ -273,7 +287,7 @@ export default {
 		const db = env.notesnook_inbox.withSession()
 		const parser = new PostalMime.default();
 		const sender = email.from;
-		const recipient = email.to.toLowerCase();
+		const recipient = email.to.toLowerCase(); // legacy, required for v0.0.0 emails, where they may have capitalization.
 		if (!recipient.endsWith(DOMAIN)){
 			return;
 		}

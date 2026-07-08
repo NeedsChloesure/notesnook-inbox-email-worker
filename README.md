@@ -12,3 +12,6 @@ To deploy this worker, you need to do a few things:
 - After that's set up, you should now navigate to the `frontend/` folder and run `npm i`, then `npm run build`. This will build the dashboard used for configuring user settings.
 - You may now run `npm i` and `wrangler deploy` in the root directory of this repository to deploy the worker to Cloudflare.
 - After deploying, you will want to use the included `admin.py` script to initialize the database.
+
+### Maintenance & Upgrading
+- If you deploy a newer version of this worker on top of your old one, it is required for you to use `admin.py` to send the upgrade command over the admin api.

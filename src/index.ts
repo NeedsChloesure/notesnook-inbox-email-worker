@@ -273,7 +273,7 @@ export default {
 		const db = env.notesnook_inbox.withSession()
 		const parser = new PostalMime.default();
 		const sender = email.from;
-		const recipient = email.to;
+		const recipient = email.to.toLowerCase();
 		if (!recipient.endsWith(DOMAIN)){
 			return;
 		}

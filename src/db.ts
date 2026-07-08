@@ -45,7 +45,7 @@ export async function getUser(
     db: D1DatabaseSession
 ): Promise<returnedUserDocument> {
     const result = await db
-        .prepare("SELECT * FROM users WHERE email = ?")
+        .prepare("SELECT * FROM users WHERE LOWER(email) = ?")
         .bind(email)
         .first<databaseReturnedInfo>();
 
@@ -64,7 +64,7 @@ export async function createUser(apikey: string, db: D1DatabaseSession): Promise
     const preparedInsert = db.prepare("INSERT INTO users (email, apikey, options, last_used) VALUES (?, ?, ?, ?)");
     const currentDate = Date.now();
     const last_used = currentDate + randomVariance();
-    const email = crypto.getRandomValues(new Uint8Array(20)).toBase64({alphabet: "base64url", omitPadding: true}) + "@" + DOMAIN;
+    const email = crypto.getRandomValues(new Uint8Array(20)).toBase64({alphabet: "base64url", omitPadding: true}).toLowerCase() + "@" + DOMAIN;
     const result = await preparedInsert.bind(email, apikey, "{}", last_used).run()
     if (!result.success){
         console.error("User creation has failed?")

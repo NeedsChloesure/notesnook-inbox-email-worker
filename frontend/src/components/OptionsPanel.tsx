@@ -60,6 +60,8 @@ export function OptionsPanel({ user, onSave, onDisconnect }: OptionsPanelProps) 
     } catch (err) {
       setStatus("err");
       setStatusMessage(err instanceof Error ? err.message : "Could not save options.");
+    } finally {
+      setTimeout(() => {setStatus("idle");setStatusMessage(null);}, 5000)
     }
   }
 

@@ -181,7 +181,7 @@ function serializeAttachment(attachment: PostalMime.Attachment): foundAttachment
 		//return {meta: {isRejected: {reason: "Unexpected attachment type (string). You should report this as a bug."}, mime: attachment.mimeType, attachmentId:attachment.contentId, name: attachment.filename}}
 		if (attachment.mimeType.startsWith("text/")){
 			const decoder = new TextDecoder();
-			const bytes = Uint8Array.fromBase64(atob(attachment.content))
+			const bytes = Uint8Array.fromBase64(attachment.content)
 			const attachment_data = createAttachmentObject(decoder.decode(bytes), attachment)
 			return attachment_data // see below comment
 		}

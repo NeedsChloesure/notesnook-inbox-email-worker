@@ -86,8 +86,7 @@ async function routeApi(request: Request, env: Env, ctx: ExecutionContext): Prom
 				return Response.json({success: false, error: "Invalid method"}, {status: 405})
 			}
 			const body: unknown = await request.json()
-			//@ts-expect-error
-			const validBody = USER_OPTIONS.safeDecode(body)
+			const validBody = USER_OPTIONS.safeParse(body)
 			if (!validBody.success) {
 				return Response.json({success: false, error: {message: "Invalid options", details: validBody.error}}, {status: 400})
 			}
@@ -178,8 +177,12 @@ function createAttachmentObject(data: string, attachment: PostalMime.Attachment)
 
 function serializeAttachment(attachment: PostalMime.Attachment): foundAttachment {
 	if (typeof attachment.content === "string"){
+		console.error("Unexpected attachment type.", "We shouldn't be here!");
+		//return {meta: {isRejected: {reason: "Unexpected attachment type (string). You should report this as a bug."}, mime: attachment.mimeType, attachmentId:attachment.contentId, name: attachment.filename}}
 		if (attachment.mimeType.startsWith("text/")){
-			const attachment_data = createAttachmentObject(atob(attachment.content), attachment)
+			const decoder = new TextDecoder();
+			const bytes = Uint8Array.fromBase64(atob(attachment.content))
+			const attachment_data = createAttachmentObject(decoder.decode(bytes), attachment)
 			return attachment_data // see below comment
 		}
 		const attachment_data = createAttachmentObject(attachment.content, attachment)

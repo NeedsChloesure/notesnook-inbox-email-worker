@@ -43,14 +43,15 @@ function convertDatabaseReturn(info: databaseReturnedInfo): returnedUserDocument
 export async function getUser(
     email: string,
     db: D1DatabaseSession
-): Promise<returnedUserDocument> {
+): Promise<returnedUserDocument | null> {
     const result = await db
         .prepare("SELECT * FROM users WHERE email = ?")
         .bind(email)
         .first<databaseReturnedInfo>();
 
     if (!result) {
-        throw new Error("No apikey associated with this email.");
+        console.error("No apikey associated with this email.");
+        return null
     }
     return convertDatabaseReturn(result);
 }

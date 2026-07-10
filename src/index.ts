@@ -75,12 +75,15 @@ async function routeApi(request: Request, env: Env, ctx: ExecutionContext): Prom
 				return Response.json({success: false, error: "Invalid method"}, {status: 405})
 			}
 			try {
-			await getInboxPublicEncryptionKey(apikey, env["Notesnook-Server-Url"])
+			const publicKey = await getInboxPublicEncryptionKey(apikey, env["Notesnook-Server-Url"])
+			if (!publicKey) {
+				return Response.json({success:false, error: "Your api key appears to be invalid."}, {status: 401})
+			}
 			const user = await getOrCreateUser(apikey, db)
 			return Response.json({success: true, user: user})
 			} catch (err) {
 				console.error(String(err))
-				return Response.json({success:false, error: "Api key appears to be invalid. (This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute)."})
+				return Response.json({success:false, error: "Api key validation failed. This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute."}, {status: 503})
 			}
 
 		}

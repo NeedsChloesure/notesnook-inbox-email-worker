@@ -223,7 +223,7 @@ function attachToEnd(isImage: boolean, attachment: foundAttachment, text: string
 	if (attachment.meta.isRejected){
 		let heading;
 		if (attachment.meta.name) {
-			heading = `<h3>Rejected attachment: ${parseForHTML(attachment.meta.name)}</h3>`
+			heading = `<h3>Rejected attachment: ${parseForCodeblock(attachment.meta.name)}</h3>`
 		} else {
 			heading = "<h3> Rejected attachment </h3>"
 		}
@@ -231,7 +231,7 @@ function attachToEnd(isImage: boolean, attachment: foundAttachment, text: string
 	} if (isImage){
 		let heading;
 		if (attachment.meta.name) {
-			heading = `<h3>${parseForHTML(attachment.meta.name)}</h3>`
+			heading = `<h3>${parseForCodeblock(attachment.meta.name)}</h3>`
 		} else {
 			heading = "<h3> Image </h3>"
 		}
@@ -240,9 +240,9 @@ function attachToEnd(isImage: boolean, attachment: foundAttachment, text: string
 	} else { //if (!isImage) {
 		let heading;
 		if (attachment.meta.name) {
-			heading = `<h3>${parseForHTML(attachment.meta.name)}</h3>`
+			heading = `<h3>${parseForCodeblock(attachment.meta.name)}</h3>`
 		} else {
-			heading = `<h3> Text (${parseForHTML(attachment.meta.mime)}) </h3>`
+			heading = `<h3> Text (${parseForCodeblock(attachment.meta.mime)}) </h3>`
 		}
 		const blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
 		const textBlock = `<pre data-block-id=\"${blockId}\" data-indent-type=\"space\" data-indent-length=\"2\" class=\"plaintext\"><code>${parseForCodeblock(attachment.data)}</code></pre>`

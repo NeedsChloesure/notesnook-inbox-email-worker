@@ -245,9 +245,20 @@ function attachToEnd(isImage: boolean, attachment: foundAttachment, text: string
 			heading = `<h3> Text (${parseForHTML(attachment.meta.mime)}) </h3>`
 		}
 		const blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
-		const textBlock = `<pre data-block-id=\"${blockId}\" data-indent-type=\"space\" data-indent-length=\"2\" class=\"plaintext\"><code>${parseForHTML(attachment.data)}</code></pre>`
+		const textBlock = `<pre data-block-id=\"${blockId}\" data-indent-type=\"space\" data-indent-length=\"2\" class=\"plaintext\"><code>${parseForCodeblock(attachment.data)}</code></pre>`
 		return text+heading+textBlock;
 	}
+}
+
+function parseForCodeblock(text: string | undefined): string | undefined {
+	if (text === undefined){
+		return;
+	}
+	return text.replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;")
 }
 
 function parseForHTML(text:string | undefined): string | undefined {

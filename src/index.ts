@@ -1,8 +1,9 @@
 import * as PostalMime from "postal-mime";
 import {getInboxPublicEncryptionKey, encrypt, postEncryptedInboxItem} from "../nn-inbox-cloudflare-workers/src/index.js"
 import { getUser, getOrCreateUser, adminDBOperation, updateUserLastUsed, updateUserOptions } from "./db.js";
-import { success, z } from "zod";
+import { z } from "zod";
 import {DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT} from "./config.js";
+import { parseHTML } from "linkedom";
 
 export const USER_OPTIONS = z.object({
 	tags: z.array(z.string()).optional(),
@@ -136,34 +137,81 @@ async function routeAdmin(request: Request, env: Env){
 
 function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 	const attachmentsData: foundAttachment[] = []
+	const { document } = parseHTML(text)
+	let appended = false;
 	for (const attach of parsedEmail.attachments){
 			attachmentsData.push(serializeAttachment(attach))
 	}
-	if (attachmentsData.length > 0){
-		text += "<hr>"
+	if (attachmentsData.some(a => a.meta.isRejected || !a.meta.isInline)){
+		document.body.appendChild(document.createElement("hr"));
+		appended = true;
 	}
+
 	for (const attachment of attachmentsData){
 		if (attachment.meta.isRejected){
-			text = attachToEnd(false, attachment, text)
+			const h3 = document.createElement("h3");
+			const p = document.createElement("p");
+			h3.textContent = `Rejected attachment ${attachment.meta.name ?? ""}`
+			p.textContent = attachment.meta.isRejected.reason;
+			document.body.appendChild(h3);
+			document.body.appendChild(p);
 			continue;
 		}
-		const cid = attachment.meta.attachmentId?.replace(/^<|>$/g, "")
+		const cid = attachment.meta.attachmentId?.replace(/^<|>$/g, "");
 		if (attachment.meta.isImage){
 			if (attachment.meta.isInline && attachment.meta.attachmentId){
-				//const pos = text.indexOf(`cid:${cid}`);
-				if (!text.includes(`cid:${cid}`)){
-					text = attachToEnd(true, attachment, text)
+				const img = document.querySelector(`img[src="cid:${cid}"]`)
+				if (img instanceof HTMLImageElement){
+					img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
 				} else {
-					text = text.replace(`cid:${cid}`, `data:${attachment.meta.mime};base64,${attachment.data}`)
+					if (!appended){
+						document.body.appendChild(document.createElement("hr"));
+						appended = true;
+					}
+					const h3 = document.createElement("h3");
+					h3.textContent = attachment.meta.name;
+					const img = document.createElement("img");
+					img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
+					document.body.appendChild(h3);
+					document.body.appendChild(img);
 				}
 			} else {
-				text = attachToEnd(true, attachment, text)
+				if (!appended){
+					document.body.appendChild(document.createElement("hr"));
+					appended = true;
+				}
+				const h3 = document.createElement("h3");
+				h3.textContent = attachment.meta.name;
+				const img = document.createElement("img");
+				img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
+				document.body.appendChild(h3);
+				document.body.appendChild(img);
 			}
 		} else {
-			text = attachToEnd(false, attachment, text)
+			if (!appended){
+				document.body.appendChild(document.createElement("hr"));
+				appended = true;
+			}
+			const pre = document.createElement("pre");
+			const h3 = document.createElement("h3");
+			h3.textContent = attachment.meta.name;
+			pre.className = "plaintext";
+			pre.dataset.blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
+			pre.dataset.indentType = "space";
+			pre.dataset.indentLength = "2";
+
+			const code = document.createElement("code");
+			if (!attachment.data){
+				continue;
+			}
+			code.textContent = attachment.data;
+
+			pre.appendChild(code);
+			document.body.appendChild(h3);
+			document.body.appendChild(pre);
 		}
 	}
-	return text
+	return document.toString();
 }
 
 function createAttachmentObject(data: string, attachment: PostalMime.Attachment): foundAttachment {
@@ -182,87 +230,47 @@ function createAttachmentObject(data: string, attachment: PostalMime.Attachment)
 }
 
 function serializeAttachment(attachment: PostalMime.Attachment): foundAttachment {
+	if (attachment.content instanceof ArrayBuffer){
+		const bytes = new Uint8Array(attachment.content);
+		if (attachment.mimeType.startsWith("text/")){
+			const decoder = new TextDecoder();
+			return createAttachmentObject(decoder.decode(bytes), attachment);
+		}
+		return createAttachmentObject(bytes.toBase64(), attachment);
+	}
 	if (typeof attachment.content === "string"){
 		console.error("Unexpected attachment type.", "We shouldn't be here!");
 		//return {meta: {isRejected: {reason: "Unexpected attachment type (string). You should report this as a bug."}, mime: attachment.mimeType, attachmentId:attachment.contentId, name: attachment.filename}}
 		if (attachment.mimeType.startsWith("text/")){
 			const decoder = new TextDecoder();
-			const bytes = Uint8Array.fromBase64(attachment.content)
-			const attachment_data = createAttachmentObject(decoder.decode(bytes), attachment)
-			return attachment_data // see below comment
+			const bytes = Uint8Array.fromBase64(attachment.content);
+			const attachment_data = createAttachmentObject(decoder.decode(bytes), attachment);
+			return attachment_data; // see below comment
 		}
-		const attachment_data = createAttachmentObject(attachment.content, attachment)
+		const attachment_data = createAttachmentObject(attachment.content, attachment);
 		return attachment_data; // I am just assuming it's base64 but fuck who knows.
 		// I have never seen this trail during testing.
 	}
 	if (attachment.content instanceof Uint8Array){
 		const bytes = attachment.content;
 		if (attachment.mimeType.startsWith("text/")){
-			const decoder = new TextDecoder()
-			return createAttachmentObject(decoder.decode(bytes), attachment)
-		}
-		return createAttachmentObject(bytes.toBase64(), attachment);
-	}
-	if (attachment.content instanceof ArrayBuffer){
-		const bytes = new Uint8Array(attachment.content);
-		if (attachment.mimeType.startsWith("text/")){
-			const decoder = new TextDecoder()
-			return createAttachmentObject(decoder.decode(bytes), attachment)
+			const decoder = new TextDecoder();
+			return createAttachmentObject(decoder.decode(bytes), attachment);
 		}
 		return createAttachmentObject(bytes.toBase64(), attachment);
 	}
 	else {
-		console.error("Unknown content type!")
-		console.error(typeof attachment.content)
-		//console.error(attachment)
-		return {meta:{attachmentId: attachment.contentId, isRejected: {reason: "Handled exception (Something happened). You should report this as a bug, please include information like the email address you sent the message to when reporting."}, name: attachment.filename, mime: attachment.mimeType}}
+		console.error("Unknown content type!");
+		console.error(typeof attachment.content);
+		return {meta:{attachmentId: attachment.contentId, isRejected: {reason: "Handled exception (Something happened). You should report this as a bug, please include information like the email address you sent the message to when reporting."}, name: attachment.filename, mime: attachment.mimeType}};
 	}
-}
-
-function attachToEnd(isImage: boolean, attachment: foundAttachment, text: string): string {
-	if (attachment.meta.isRejected){
-		let heading;
-		if (attachment.meta.name) {
-			heading = `<h3>Rejected attachment: ${parseForCodeblock(attachment.meta.name)}</h3>`
-		} else {
-			heading = "<h3> Rejected attachment </h3>"
-		}
-		return text+heading+`<p>${attachment.meta.isRejected.reason}</p>`
-	} if (isImage){
-		let heading;
-		if (attachment.meta.name) {
-			heading = `<h3>${parseForCodeblock(attachment.meta.name)}</h3>`
-		} else {
-			heading = "<h3> Image </h3>"
-		}
-		const imgBlock = `<img src="data:${attachment.meta.mime};base64,${attachment.data}"/>`
-		return text+heading+imgBlock;
-	} else { //if (!isImage) {
-		let heading;
-		if (attachment.meta.name) {
-			heading = `<h3>${parseForCodeblock(attachment.meta.name)}</h3>`
-		} else {
-			heading = `<h3> Text (${parseForCodeblock(attachment.meta.mime)}) </h3>`
-		}
-		const blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
-		const textBlock = `<pre data-block-id=\"${blockId}\" data-indent-type=\"space\" data-indent-length=\"2\" class=\"plaintext\"><code>${parseForCodeblock(attachment.data)}</code></pre>`
-		return text+heading+textBlock;
-	}
-}
-
-function parseForCodeblock(text: string | undefined): string | undefined {
-	if (text === undefined){
-		return;
-	}
-	return text.replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;")
 }
 
 function parseForHTML(text:string | undefined): string | undefined {
-	if (text === undefined){
+	/*
+	Wraps text in paragraph blocks.
+	*/
+	if (text == undefined){
 		return;
 	}
 	text = text

@@ -78,13 +78,14 @@ async function routeApi(request: Request, env: Env, ctx: ExecutionContext): Prom
 			try {
 			const publicKey = await getInboxPublicEncryptionKey(apikey, env["Notesnook-Server-Url"])
 			if (!publicKey) {
-				return Response.json({success:false, error: "Your api key appears to be invalid."}, {status: 401})
+				return Response.json({success:false, error: "Your api key appears to be invalid."}, {status: 401});
 			}
-			const user = await getOrCreateUser(apikey, db)
-			return Response.json({success: true, user: user})
+			const user = await getOrCreateUser(apikey, db);
+			ctx.waitUntil(updateUserLastUsed(apikey, db));
+			return Response.json({success: true, user: user});
 			} catch (err) {
-				console.error(String(err))
-				return Response.json({success:false, error: "Api key validation failed. This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute."}, {status: 503})
+				console.error(String(err));
+				return Response.json({success:false, error: "Api key validation failed. This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute."}, {status: 503});
 			}
 
 		}
@@ -92,14 +93,21 @@ async function routeApi(request: Request, env: Env, ctx: ExecutionContext): Prom
 			if (!(request.method === "POST")) {
 				return Response.json({success: false, error: "Invalid method"}, {status: 405})
 			}
-			const body: unknown = await request.json()
-			const validBody = USER_OPTIONS.safeParse(body)
-			if (!validBody.success) {
-				return Response.json({success: false, error: {message: "Invalid options", details: validBody.error}}, {status: 400})
+			try {
+			const publicKey = await getInboxPublicEncryptionKey(apikey, env["Notesnook-Server-Url"]);
+			if (!publicKey) {
+				return Response.json({success:false, error: "Your api key appears to be invalid."}, {status: 401});
+			}} catch(err){
+				return Response.json({success:false, error: "Api key validation failed. This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute."}, {status: 503});
 			}
-			await updateUserOptions(apikey, validBody.data, db)
-			ctx.waitUntil(updateUserLastUsed(apikey, db))
-			return Response.json({success:true})
+			const body: unknown = await request.json();
+			const validBody = USER_OPTIONS.safeParse(body);
+			if (!validBody.success) {
+				return Response.json({success: false, error: {message: "Invalid options", details: validBody.error}}, {status: 400});
+			}
+			await updateUserOptions(apikey, validBody.data, db);
+			ctx.waitUntil(updateUserLastUsed(apikey, db));
+			return Response.json({success:true});
 		}
 		default: {
 			return Response.json({success: false, error: "Could not handle your request."}, {status: 404})

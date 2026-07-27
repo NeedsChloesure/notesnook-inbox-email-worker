@@ -248,7 +248,7 @@ function serializeAttachment(attachment: PostalMime.Attachment): foundAttachment
 		return createAttachmentObject(bytes.toBase64(), attachment);
 	}
 	if (typeof attachment.content === "string"){
-		console.error("Unexpected attachment type.", "We shouldn't be here!");
+		console.error("Unexpected attachment type. We shouldn't be here! (content type is string?)");
 		//return {meta: {isRejected: {reason: "Unexpected attachment type (string). You should report this as a bug."}, mime: attachment.mimeType, attachmentId:attachment.contentId, name: attachment.filename}}
 		if (attachment.mimeType.startsWith("text/")){
 			const decoder = new TextDecoder();

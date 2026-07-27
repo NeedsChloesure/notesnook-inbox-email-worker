@@ -145,7 +145,7 @@ async function routeAdmin(request: Request, env: Env){
 
 function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 	const attachmentsData: foundAttachment[] = []
-	const { document } = parseHTML(text)
+	const { document, HTMLImageElement } = parseHTML(text)
 	let appended = false;
 	for (const attach of parsedEmail.attachments){
 			attachmentsData.push(serializeAttachment(attach))
@@ -167,7 +167,8 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 		}
 		const cid = attachment.meta.attachmentId?.replace(/^<|>$/g, "");
 		if (attachment.meta.isImage){
-			if (attachment.meta.isInline && attachment.meta.attachmentId){
+			if (cid){
+			if (text.includes(cid) && attachment.meta.attachmentId){
 				const img = document.querySelector(`img[src="cid:${cid}"]`)
 				if (img instanceof HTMLImageElement){
 					img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
@@ -183,7 +184,7 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 					document.body.appendChild(h3);
 					document.body.appendChild(img);
 				}
-			} else {
+			}} else {
 				if (!appended){
 					document.body.appendChild(document.createElement("hr"));
 					appended = true;

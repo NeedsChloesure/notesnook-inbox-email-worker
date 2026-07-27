@@ -60,12 +60,21 @@ export async function updateUserOptions(apikey: string, options: userOptions, db
     await db.prepare("UPDATE users SET options = ? WHERE apikey = ?").bind(JSON.stringify(options), apikey).run();
 }
 
+function createEmail(){
+    while (true){
+        const localpart = crypto.getRandomValues(new Uint8Array(20)).toBase64({alphabet: "base64url", omitPadding: true}).toLowerCase();
+        if (!(localpart.startsWith("-") || localpart.startsWith("_"))){
+            return localpart + "@" + DOMAIN
+        }
+    }
+}
+
 export async function createUser(apikey: string, db: D1DatabaseSession): Promise<returnedUserDocument | null> {
     // email, key, options, last_used
     const preparedInsert = db.prepare("INSERT INTO users (email, apikey, options, last_used) VALUES (?, ?, ?, ?)");
     const currentDate = Date.now();
     const last_used = currentDate + randomVariance();
-    const email = crypto.getRandomValues(new Uint8Array(20)).toBase64({alphabet: "base64url", omitPadding: true}).toLowerCase() + "@" + DOMAIN;
+    const email = createEmail();
     const result = await preparedInsert.bind(email, apikey, "{}", last_used).run()
     if (!result.success){
         console.error("User creation has failed?")

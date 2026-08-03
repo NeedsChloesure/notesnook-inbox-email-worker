@@ -328,9 +328,9 @@ export default {
 		if (!recipient.endsWith(DOMAIN)){
 			return;
 		}
-		const subject = email.headers.get("subject") || `Note from ${sender} on ${prettyDate()}`
 		const rawEmail = new Response(email.raw)
 		const parsedEmail = await parser.parse(await rawEmail.arrayBuffer())
+		const subject = parsedEmail.subject || `Note from ${sender} on ${prettyDate()}`
 		const returnedValue = await getUser(recipient, db)
 		if (!returnedValue){
 			rejectEmail(email, "There is no record associated with this email in the database.\n Emails are cleared on a daily basis and are removed after 30 days of inactivity.")

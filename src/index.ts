@@ -4,6 +4,7 @@ import { getUser, getOrCreateUser, adminDBOperation, updateUserLastUsed, updateU
 import { z } from "zod";
 import {DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT} from "./config.js";
 import { parseHTML } from "linkedom";
+import { mimeToLanguage } from "./language.js";
 
 export const USER_OPTIONS = z.object({
 	tags: z.array(z.string()).optional(),
@@ -146,6 +147,16 @@ async function routeAdmin(request: Request, env: Env){
 function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 	const attachmentsData: foundAttachment[] = []
 	const { document, HTMLImageElement } = parseHTML(text)
+	// In case of a poorly formed html (many popular providers), try to make it well formed.
+	if (!document.querySelector("body")) {
+		const html = document.querySelector("html") ?? document.createElement("html");
+		const body = document.createElement("body");
+		while (document.firstChild) {
+			body.appendChild(document.firstChild);
+		}
+		html.appendChild(body);
+		document.appendChild(html);
+	}
 	let appended = false;
 	for (const attach of parsedEmail.attachments){
 			attachmentsData.push(serializeAttachment(attach))
@@ -204,7 +215,7 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 			const pre = document.createElement("pre");
 			const h3 = document.createElement("h3");
 			h3.textContent = attachment.meta.name;
-			pre.className = "plaintext";
+			pre.className = mimeToLanguage(attachment.meta.mime);
 			pre.dataset.blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
 			pre.dataset.indentType = "space";
 			pre.dataset.indentLength = "2";

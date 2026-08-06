@@ -207,6 +207,9 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string {
 			document.body.appendChild(img);
 			continue;
 		}
+		if (!attachment.data){
+			continue;
+		}
 		appendSeparator();
 		const pre = document.createElement("pre");
 		const h3 = document.createElement("h3");
@@ -217,9 +220,6 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string {
 		pre.dataset.indentLength = "2";
 
 		const code = document.createElement("code");
-		if (!attachment.data){
-			continue;
-		}
 		code.textContent = attachment.data;
 
 		pre.appendChild(code);

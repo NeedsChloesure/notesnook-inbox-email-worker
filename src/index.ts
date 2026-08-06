@@ -25,7 +25,6 @@ type foundAttachment = {
 		attachmentId: string | undefined,
 		mime: string,
 		isImage?: boolean,
-		isInline?: boolean,
 		name: string | null
 		isRejected?: rejectedAttachment
 	}
@@ -145,7 +144,6 @@ async function routeAdmin(request: Request, env: Env){
 }
 
 function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
-	const attachmentsData: foundAttachment[] = []
 	const { document, HTMLImageElement } = parseHTML(text)
 	// In case of a poorly formed html (many popular providers), try to make it well formed.
 	if (!document.querySelector("body")) {
@@ -158,16 +156,22 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 		document.appendChild(html);
 	}
 	let appended = false;
-	for (const attach of parsedEmail.attachments){
-			attachmentsData.push(serializeAttachment(attach))
-	}
-	if (attachmentsData.some(a => a.meta.isRejected || !a.meta.isInline)){
-		document.body.appendChild(document.createElement("hr"));
+	// Adds a separator before the first attachment that gets rendered outside of the note contents.
+	const appendSeparator = () => {
+		if (!appended){
+			document.body.appendChild(document.createElement("hr"));
+		}
 		appended = true;
 	}
-
-	for (const attachment of attachmentsData){
+	// Hand the attachments over one at a time so each decoded buffer can be dropped as
+	// soon as it has been embedded into the note.
+	const attachments = parsedEmail.attachments;
+	parsedEmail.attachments = [];
+	for (const attach of attachments){
+		const attachment = serializeAttachment(attach);
+		attach.content = new ArrayBuffer(0);
 		if (attachment.meta.isRejected){
+			appendSeparator();
 			const h3 = document.createElement("h3");
 			const p = document.createElement("p");
 			h3.textContent = `Rejected attachment ${attachment.meta.name ?? ""}`
@@ -178,78 +182,61 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 		}
 		const cid = attachment.meta.attachmentId?.replace(/^<|>$/g, "");
 		if (attachment.meta.isImage){
-			if (cid){
-			if (text.includes(cid) && attachment.meta.attachmentId){
+			if (cid && text.includes(cid) && attachment.meta.attachmentId){
 				const img = document.querySelector(`img[src="cid:${cid}"]`)
 				if (img instanceof HTMLImageElement){
 					img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
-				} else {
-					if (!appended){
-						document.body.appendChild(document.createElement("hr"));
-						appended = true;
-					}
-					const h3 = document.createElement("h3");
-					h3.textContent = attachment.meta.name;
-					const img = document.createElement("img");
-					img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
-					document.body.appendChild(h3);
-					document.body.appendChild(img);
+					continue;
 				}
-			}} else {
-				if (!appended){
-					document.body.appendChild(document.createElement("hr"));
-					appended = true;
-				}
-				const h3 = document.createElement("h3");
-				h3.textContent = attachment.meta.name;
-				const img = document.createElement("img");
-				img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
-				document.body.appendChild(h3);
-				document.body.appendChild(img);
 			}
-		} else {
-			if (!appended){
-				document.body.appendChild(document.createElement("hr"));
-				appended = true;
-			}
-			const pre = document.createElement("pre");
+			appendSeparator();
 			const h3 = document.createElement("h3");
 			h3.textContent = attachment.meta.name;
-			pre.className = mimeToLanguage(attachment.meta.mime);
-			pre.dataset.blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
-			pre.dataset.indentType = "space";
-			pre.dataset.indentLength = "2";
-
-			const code = document.createElement("code");
-			if (!attachment.data){
-				continue;
-			}
-			code.textContent = attachment.data;
-
-			pre.appendChild(code);
+			const img = document.createElement("img");
+			img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
 			document.body.appendChild(h3);
-			document.body.appendChild(pre);
+			document.body.appendChild(img);
+			continue;
 		}
+		appendSeparator();
+		const pre = document.createElement("pre");
+		const h3 = document.createElement("h3");
+		h3.textContent = attachment.meta.name;
+		pre.className = mimeToLanguage(attachment.meta.mime);
+		pre.dataset.blockId = crypto.getRandomValues(new Uint8Array(6)).toBase64()
+		pre.dataset.indentType = "space";
+		pre.dataset.indentLength = "2";
+
+		const code = document.createElement("code");
+		if (!attachment.data){
+			continue;
+		}
+		code.textContent = attachment.data;
+
+		pre.appendChild(code);
+		document.body.appendChild(h3);
+		document.body.appendChild(pre);
 	}
 	return document.toString();
 }
 
 function createAttachmentObject(data: string, attachment: PostalMime.Attachment): foundAttachment {
-	if (data.length > ATTACHMENT_SIZE_LIMIT){
-		// early reject
-		return {meta: {attachmentId: attachment.contentId, mime: attachment.mimeType, name: attachment.filename, isRejected: {reason: "Attachment too big."}}}
+	if (attachment.mimeType.startsWith("image/")){
+		return {data: data, meta: {attachmentId: attachment.contentId, mime:attachment.mimeType, name: attachment.filename, isImage: true}}
+	} if (attachment.mimeType.startsWith("text/")) {
+		return {data: data, meta: {attachmentId: attachment.contentId, mime:attachment.mimeType, name: attachment.filename, isImage: false}}
 	} else {
-		if (attachment.mimeType.startsWith("image/")){
-			return {data: data, meta: {attachmentId: attachment.contentId, mime:attachment.mimeType, name: attachment.filename, isImage: true, isInline: attachment.disposition?.startsWith("inline") ?? false}}
-		} if (attachment.mimeType.startsWith("text/")) {
-			return {data: data, meta: {attachmentId: attachment.contentId, mime:attachment.mimeType, name: attachment.filename, isImage: false, }}
-		} else {
-			return {meta: {attachmentId: attachment.contentId, mime: attachment.mimeType, name: attachment.filename, isRejected: {reason: "Attachment is not text or image."}}}
-		}
+		return {meta: {attachmentId: attachment.contentId, mime: attachment.mimeType, name: attachment.filename, isRejected: {reason: "Attachment is not text or image."}}}
 	}
 }
 
+function getAttachmentSize(attachment: string | Uint8Array | ArrayBuffer): number {
+	if (typeof attachment === "string") return Math.floor(attachment.length / (4/3));
+	return attachment.byteLength;
+}
+
 function serializeAttachment(attachment: PostalMime.Attachment): foundAttachment {
+	if (getAttachmentSize(attachment.content) > ATTACHMENT_SIZE_LIMIT) return {meta: {attachmentId: attachment.contentId, mime: attachment.mimeType, name: attachment.filename, isRejected: {reason: "Attachment too big."}}};
 	if (attachment.content instanceof ArrayBuffer){
 		const bytes = new Uint8Array(attachment.content);
 		if (attachment.mimeType.startsWith("text/")){
@@ -260,7 +247,6 @@ function serializeAttachment(attachment: PostalMime.Attachment): foundAttachment
 	}
 	if (typeof attachment.content === "string"){
 		console.error("Unexpected attachment type. We shouldn't be here! (content type is string?)");
-		//return {meta: {isRejected: {reason: "Unexpected attachment type (string). You should report this as a bug."}, mime: attachment.mimeType, attachmentId:attachment.contentId, name: attachment.filename}}
 		if (attachment.mimeType.startsWith("text/")){
 			const decoder = new TextDecoder();
 			const bytes = Uint8Array.fromBase64(attachment.content);
@@ -339,8 +325,7 @@ export default {
 		if (!recipient.endsWith(DOMAIN)){
 			return;
 		}
-		const rawEmail = new Response(email.raw)
-		const parsedEmail = await parser.parse(await rawEmail.arrayBuffer())
+		const parsedEmail = await parser.parse(email.raw)
 		const subject = parsedEmail.subject || `Note from ${sender} on ${prettyDate()}`
 		const returnedValue = await getUser(recipient, db)
 		if (!returnedValue){
@@ -372,7 +357,7 @@ export default {
 		note_object.content.data = buildNoteHTML(note_object.content.data, parsedEmail)
 		const note_object_string = JSON.stringify(note_object)
 		if (note_object_string.length > NOTE_SIZE_LIMIT + 500_000){ // magic number is to give some leeway for my transformations, like adding attachments to the end.
-			console.warn("Oversize object permitted.") // do something later
+			console.warn(`Oversize object permitted. Size: ${note_object_string.length}`); // do something later
 		}
 		const serverMessage = await encrypt(note_object_string, pubkey)
 		await postEncryptedInboxItem(apikey, serverMessage, env["Notesnook-Server-Url"])

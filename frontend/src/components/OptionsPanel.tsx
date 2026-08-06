@@ -73,6 +73,7 @@ export function OptionsPanel({ user, onSave, onDisconnect }: OptionsPanelProps) 
     } catch (error) {
       // if the copy fails, change button to red
       setCopied(false)
+      console.error(error instanceof Error ? error.message : "Failed to copy email.")
       setTimeout(() => setCopied(null), 1500)
     }
   }

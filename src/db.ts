@@ -104,11 +104,11 @@ export async function updateUserLastUsed(emailOrApikey: string, db: D1DatabaseSe
     if (emailOrApikey.includes("@")){
     const updateThreshold = Date.now() - oneDay;
     const lastUsed = Date.now() + randomVariance();
-    const preparedStatement = await db.prepare("UPDATE users SET last_used = ? WHERE email = ? AND last_used < ?").bind(lastUsed, emailOrApikey, updateThreshold).run();
+    await db.prepare("UPDATE users SET last_used = ? WHERE email = ? AND last_used < ?").bind(lastUsed, emailOrApikey, updateThreshold).run();
 } else {
     const updateThreshold = Date.now() - oneDay;
     const lastUsed = Date.now() + randomVariance();
-    const preparedStatement = await db.prepare("UPDATE users SET last_used = ? WHERE apikey = ? AND last_used < ?").bind(lastUsed, emailOrApikey, updateThreshold).run();
+    await db.prepare("UPDATE users SET last_used = ? WHERE apikey = ? AND last_used < ?").bind(lastUsed, emailOrApikey, updateThreshold).run();
 }
 }
 

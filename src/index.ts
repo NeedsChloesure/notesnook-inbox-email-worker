@@ -30,11 +30,6 @@ type foundAttachment = {
 	}
 }
 
-export type serverStats = {
-	instance: string,
-	activeAccounts: number
-}
-
 function prettyDate(): string{
 	const now = new Date();
 

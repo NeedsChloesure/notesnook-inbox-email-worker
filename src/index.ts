@@ -1,8 +1,8 @@
 import * as PostalMime from "postal-mime";
-import {getInboxPublicEncryptionKey, encrypt, postEncryptedInboxItem} from "../nn-inbox-cloudflare-workers/src/index.js"
+import { getInboxPublicEncryptionKey, encrypt, postEncryptedInboxItem } from "../nn-inbox-cloudflare-workers/src/index.js"
 import { getUser, getOrCreateUser, adminDBOperation, updateUserLastUsed, updateUserOptions } from "./db.js";
 import { z } from "zod";
-import {DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT} from "./config.js";
+import { DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT } from "./config.js";
 import { parseHTML } from "linkedom";
 import { mimeToLanguage } from "./language.js";
 
@@ -29,6 +29,18 @@ type foundAttachment = {
 		isRejected?: rejectedAttachment
 	}
 }
+
+type NoteObject = {title: string, 
+	content: {type: "html", data: string}, 
+	version: 1, 
+	source: string, 
+	type: "note", 
+	pinned: boolean | undefined, 
+	readonly: boolean | undefined, 
+	archived: boolean | undefined, 
+	favorite: boolean | undefined, 
+	tagIds: string[] | undefined, 
+	notebookIds: string[] | undefined}
 
 function prettyDate(): string{
 	const now = new Date();
@@ -138,7 +150,9 @@ async function routeAdmin(request: Request, env: Env){
 	}
 }
 
-function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
+function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string {
+	// If there are no attachments, just return the html, because there's nothing to do anyway.
+	if (parsedEmail.attachments.length === 0) return text;
 	const { document, HTMLImageElement } = parseHTML(text)
 	// In case of a poorly formed html (many popular providers), try to make it well formed.
 	if (!document.querySelector("body")) {
@@ -177,10 +191,10 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string{
 		}
 		const cid = attachment.meta.attachmentId?.replace(/^<|>$/g, "");
 		if (attachment.meta.isImage){
-			if (cid && text.includes(cid) && attachment.meta.attachmentId){
-				const img = document.querySelector(`img[src="cid:${cid}"]`)
-				if (img instanceof HTMLImageElement){
-					img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
+			const imgElement = document.querySelector(`img[src="cid:${cid}"]`)
+			if (cid && imgElement){
+				if (imgElement instanceof HTMLImageElement){
+					imgElement.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
 					continue;
 				}
 			}
@@ -298,7 +312,7 @@ export default {
 			if (!metainfo){
 				return Response.json({instance: env["Notesnook-Server-Url"], count: 0})
 			}
-			return Response.json(JSON.parse(metainfo))
+			return new Response(metainfo, {headers: {"content-type": "application/json"}});
 		}
 		if (url.pathname.startsWith("/admin-api/")){
 			const headers = request.headers
@@ -314,21 +328,21 @@ export default {
 	},
 	async email(email, env, ctx): Promise<void>{
 		const db = env.notesnook_inbox.withSession()
-		const parser = new PostalMime.default();
-		const sender = email.from;
 		const recipient = email.to.toLowerCase(); // legacy, required for v0.0.0 emails, where they may have capitalization.
 		if (!recipient.endsWith(DOMAIN)){
 			return;
 		}
-		const parsedEmail = await parser.parse(email.raw)
-		const subject = parsedEmail.subject || `Note from ${sender} on ${prettyDate()}`
 		const returnedValue = await getUser(recipient, db)
 		if (!returnedValue){
 			rejectEmail(email, "There is no record associated with this email in the database.\n Emails are cleared on a daily basis and are removed after 30 days of inactivity.")
 			return
 		}
 		const apikey = returnedValue.apikey;
-		const note_object = {
+		const parser = new PostalMime.default();
+		const sender = email.from;
+		let parsedEmail: PostalMime.Email | null = await parser.parse(email.raw)
+		const subject = parsedEmail.subject || `Note from ${sender} on ${prettyDate()}`
+		let noteObject: null | NoteObject = {
 			title: subject,
 			content:{
 				type: "html",
@@ -337,28 +351,34 @@ export default {
 			version: 1,
 			source: `email from ${sender}`,
 			type: "note",
-			pinned: returnedValue.options?.pinned || false,
-			readonly: returnedValue.options?.readonly || false,
-			archived: returnedValue.options?.archived || false,
-			favorite: returnedValue.options?.favorited || false,
-			notebookIds: returnedValue.options?.notebooks || [],
-			tagIds: returnedValue.options?.tags || []
+			pinned: returnedValue.options?.pinned || undefined,
+			readonly: returnedValue.options?.readonly || undefined,
+			archived: returnedValue.options?.archived || undefined,
+			favorite: returnedValue.options?.favorited || undefined,
+			notebookIds: returnedValue.options?.notebooks || undefined,
+			tagIds: returnedValue.options?.tags || undefined
 		}
 		const pubkey = await getInboxPublicEncryptionKey(apikey, env["Notesnook-Server-Url"])
 		if (!pubkey){
 			rejectEmail(email, "Could not resolve public key.\n Is your API key still valid?\n This email address is only good for the API key it was created for.")
 			return
 		}
-		note_object.content.data = buildNoteHTML(note_object.content.data, parsedEmail)
-		const note_object_string = JSON.stringify(note_object)
-		if (note_object_string.length > NOTE_SIZE_LIMIT + 500_000){ // magic number is to give some leeway for my transformations, like adding attachments to the end.
-			console.warn(`Oversize object permitted. Size: ${note_object_string.length}`); // do something later
+		noteObject.content.data = buildNoteHTML(noteObject.content.data, parsedEmail);
+		const noteObjectString = JSON.stringify(noteObject);
+		noteObject = null;
+		parsedEmail = null;
+		if (noteObjectString.length > NOTE_SIZE_LIMIT + 500_000){ // magic number is to give some leeway for my transformations, like adding attachments to the end.
+			if (noteObjectString.length > 11_000_000){
+				rejectEmail(email, "Email was too large to send to notesnook.")
+				return;
+			}
+			console.warn(`Oversize object permitted. Size: ${noteObjectString.length}`); // do something later
 		}
-		const serverMessage = await encrypt(note_object_string, pubkey)
+		const serverMessage = await encrypt(noteObjectString, pubkey)
 		await postEncryptedInboxItem(apikey, serverMessage, env["Notesnook-Server-Url"])
 		ctx.waitUntil(updateUserLastUsed(recipient, db))
 
-		//console.log("sent event: " + JSON.stringify(note_object));
+		//console.log("sent event: " + noteObjectString);
 		},
 	async scheduled(scheduled, env, ctx){
 		switch (scheduled.cron) {

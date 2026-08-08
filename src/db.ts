@@ -56,8 +56,8 @@ export async function getUser(
     return convertDatabaseReturn(result);
 }
 
-export async function updateUserOptions(apikey: string, options: userOptions, db: D1DatabaseSession): Promise<void> {
-    await db.prepare("UPDATE users SET options = ? WHERE apikey = ?").bind(JSON.stringify(options), apikey).run();
+export async function updateUserOptions(apikey: string, options: string, db: D1DatabaseSession): Promise<void> {
+    await db.prepare("UPDATE users SET options = ? WHERE apikey = ?").bind(options, apikey).run();
 }
 
 function createEmail(){

@@ -1,19 +1,19 @@
 import * as PostalMime from "postal-mime";
 import { getInboxPublicEncryptionKey, encrypt, postEncryptedInboxItem } from "../nn-inbox-cloudflare-workers/src/index.js"
 import { getUser, getOrCreateUser, adminDBOperation, updateUserLastUsed, updateUserOptions } from "./db.js";
-import { z } from "zod";
 import { DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT } from "./config.js";
 import { parseHTML } from "linkedom";
 import { mimeToLanguage } from "./language.js";
+import typia from "typia";
 
-export const USER_OPTIONS = z.object({
-	tags: z.array(z.string()).optional(),
-	notebooks: z.array(z.string()).optional(),
-    archived: z.boolean().optional(),
-    favorited: z.boolean().optional(),
-    readonly: z.boolean().optional(),
-    pinned: z.boolean().optional()
-})
+interface UserOptions {
+	tags?: string[],
+	notebooks?: string[],
+	archived?: boolean,
+	favorited?: boolean,
+	readonly?: boolean,
+	pinned?: boolean,
+}
 
 type rejectedAttachment = {
 	reason: string
@@ -107,12 +107,14 @@ async function routeApi(request: Request, env: Env, ctx: ExecutionContext): Prom
 			}} catch(err){
 				return Response.json({success:false, error: "Api key validation failed. This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute."}, {status: 503});
 			}
-			const body: unknown = await request.json();
-			const validBody = USER_OPTIONS.safeParse(body);
-			if (!validBody.success) {
-				return Response.json({success: false, error: {message: "Invalid options", details: validBody.error}}, {status: 400});
+			const body = await request.json();
+			let validBody: string;
+			try {
+			validBody = typia.json.assertStringify(body)
+			} catch(err) {
+				return Response.json({success: false, error: String(err)}, {status: 400});
 			}
-			await updateUserOptions(apikey, validBody.data, db);
+			await updateUserOptions(apikey, validBody, db);
 			ctx.waitUntil(updateUserLastUsed(apikey, db));
 			return Response.json({success:true});
 		}

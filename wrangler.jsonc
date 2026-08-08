@@ -5,7 +5,11 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "notesnook-inbox",
-	"main": "src/index.ts",
+	"main": "dist/src/index.js",
+	"build": {
+		"watch_dir": "./src",
+		"command": "npx ttsc"
+	},
 	"compatibility_date": "2026-07-04",
 	"observability": {
 		"enabled": true

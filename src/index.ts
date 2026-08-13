@@ -343,7 +343,7 @@ export default {
 		const parser = new PostalMime.default();
 		const sender = email.from;
 		let parsedEmail: PostalMime.Email | null = await parser.parse(email.raw)
-		const subject = parsedEmail.subject || `Note from ${sender} on ${prettyDate()}`
+		const subject = parsedEmail.subject || `Note from ${sender} on ${prettyDate()} UTC`
 		let noteObject: null | NoteObject = {
 			title: subject,
 			content:{

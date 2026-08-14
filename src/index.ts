@@ -4,7 +4,7 @@ import { getUser, getOrCreateUser, adminDBOperation, updateUserLastUsed, updateU
 import { DOMAIN, ATTACHMENT_SIZE_LIMIT, NOTE_SIZE_LIMIT, INACTIVE_USER_TIMEOUT } from "./config.js";
 import { parseHTML } from "linkedom";
 import { mimeToLanguage } from "./language.js";
-import typia from "typia";
+import typia, { IValidation } from "typia";
 
 interface UserOptions {
 	tags?: string[],
@@ -108,13 +108,17 @@ async function routeApi(request: Request, env: Env, ctx: ExecutionContext): Prom
 				return Response.json({success:false, error: "Api key validation failed. This error can be transient if Notesnook's servers are unavailable, try again in about 1 minute."}, {status: 503});
 			}
 			const body = await request.json();
-			let validBody: string;
+			let validBody: IValidation<string>;
 			try {
-			validBody = typia.json.assertStringify(body)
+				validBody = typia.json.validateStringify<UserOptions>(body)
 			} catch(err) {
 				return Response.json({success: false, error: String(err)}, {status: 400});
 			}
-			await updateUserOptions(apikey, validBody, db);
+			if (validBody.success) {
+				await updateUserOptions(apikey, validBody.data, db);
+			} else {
+				return Response.json({success: false, error: validBody.errors}, {status: 400})
+			}
 			ctx.waitUntil(updateUserLastUsed(apikey, db));
 			return Response.json({success:true});
 		}
@@ -193,13 +197,21 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string {
 		}
 		const cid = attachment.meta.attachmentId?.replace(/^<|>$/g, "");
 		if (attachment.meta.isImage){
-			const imgElement = document.querySelector(`img[src="cid:${cid}"]`)
-			if (cid && imgElement){
-				if (imgElement instanceof HTMLImageElement){
-					imgElement.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
-					continue;
-				}
-			}
+			const imgElements = document.querySelectorAll(`img[src="cid:${cid}"]`)
+			if (imgElements.length > 0){
+				for (const imgElement of imgElements) {
+					if (imgElement instanceof HTMLImageElement){
+						imgElement.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
+					} else {
+						appendSeparator();
+						const h3 = document.createElement("h3");
+						h3.textContent = attachment.meta.name;
+						const img = document.createElement("img");
+						img.src = `data:${attachment.meta.mime};base64,${attachment.data}`;
+						document.body.appendChild(h3);
+						document.body.appendChild(img);
+					}
+				}} else {
 			appendSeparator();
 			const h3 = document.createElement("h3");
 			h3.textContent = attachment.meta.name;
@@ -208,6 +220,8 @@ function buildNoteHTML(text: string, parsedEmail: PostalMime.Email): string {
 			document.body.appendChild(h3);
 			document.body.appendChild(img);
 			continue;
+			}
+		continue;
 		}
 		if (!attachment.data){
 			continue;
@@ -331,7 +345,7 @@ export default {
 	async email(email, env, ctx): Promise<void>{
 		const db = env.notesnook_inbox.withSession()
 		const recipient = email.to.toLowerCase(); // legacy, required for v0.0.0 emails, where they may have capitalization.
-		if (!recipient.endsWith(DOMAIN)){
+		if (!recipient.endsWith(`@${DOMAIN}`)){
 			return;
 		}
 		const returnedValue = await getUser(recipient, db)
